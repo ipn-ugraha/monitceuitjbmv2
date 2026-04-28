@@ -449,6 +449,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0}
     <div id="charts-area"></div>
   </div>
   <div id="view-performance" style="display:none"></div>
+  <div id="view-input" style="display:none"></div>
 
   <div class="footer">PT PLN Persero · Unit Induk Transmisi Jawa Timur dan Bali<br>Common Enemy Dashboard 2026 · ROW B1 ÷ 100 (normalisasi bobot)</div>
 </div>
@@ -656,6 +657,7 @@ async function initDashboard(){
       TINJUT_TODAY[upt] = parseInt(configMap[key])||0;
     });
     
+    window.APPS_SCRIPT_URL = localStorage.getItem('apps_script_url')||'';
     hideLoading();
     renderAll();
     
@@ -746,7 +748,7 @@ function makeLineChart(canvas, labels, tData, oData, col, jData=null){
 // ── NAV ──────────────────────────────────────────────────────────────────
 function renderNavTabs(){
   document.getElementById('nav-tabs').innerHTML=
-    [{key:'rekap',label:'Rekap UIT JBM'},{key:'upt',label:'Per UPT'},{key:'performance',label:'Performance'}]
+    [{key:'rekap',label:'Rekap UIT JBM'},{key:'upt',label:'Per UPT'},{key:'performance',label:'Performance'},{key:'input',label:'✏ Input Data'}]
     .map(t=>`<button class="nav-tab${t.key===activeView?' on':''}" onclick="setView('${t.key}')">${t.label}</button>`).join('');
 }
 function setView(v){
@@ -754,6 +756,7 @@ function setView(v){
   document.getElementById('view-rekap').style.display=v==='rekap'?'':'none';
   document.getElementById('view-upt').style.display=v==='upt'?'':'none';
   document.getElementById('view-performance').style.display=v==='performance'?'':'none';
+  document.getElementById('view-input').style.display=v==='input'?'':'none';
   renderAll();
 }
 function setUpt(u){activeUpt=u;renderUptView();}
@@ -1319,11 +1322,222 @@ function buildTinjutHistory(){
     +thead+'<tbody>'+rows+'</tbody></table></div>';
 }
 
+function renderInputForm(){
+  var n = WL.length-1;
+  var today = new Date();
+  var months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des'];
+  var todayStr = String(today.getDate()).padStart(2,'0')+' '+months[today.getMonth()]+' '+today.getFullYear();
+  var activeInputUpt = window._activeInputUpt || UPTS[0];
+
+  // SUB_KEYS grouped
+  var GROUPS = [
+    {grp:'G', label:'Gardu Induk', color:'#58a6ff', subs:[
+      'G1 AHI Trafo','G1 Anti Binatang','G1 Relay Internal',
+      'G2 MV Aparatus','G3 Switchyard AHI','G4 GIS','G5 Common Facility'
+    ]},
+    {grp:'T', label:'Transmisi', color:'#f85149', subs:[
+      'T1 Cable Sheath','T2 SUTT AHI','T2 ROW B1','T2 Anti Binatang','T2 Tapak Tower'
+    ]},
+    {grp:'P', label:'Proteksi & Catu Daya', color:'#3fb950', subs:[
+      'P1 AHI Proteksi','P1 Design Proteksi','P2 AHI Catu Daya','P2 Design Catu Daya'
+    ]}
+  ];
+
+  // Build form rows per group
+  function buildRows(upt){
+    return GROUPS.map(function(g){
+      var rows = g.subs.map(function(sk){
+        var grpKey = GROUP_OF[sk];
+        var arr = D[upt][grpKey][sk];
+        var prevO = arr && arr.length>0 ? arr[n].o : 0;
+        var prevT = arr && arr.length>0 ? arr[n].t : 0;
+        var isROW = sk==='T2 ROW B1';
+        return '<tr>'
+          +'<td style="padding:7px 10px;font-family:var(--font-m);font-size:11px;color:var(--text2);white-space:nowrap">'+sk+(isROW?' <span style="opacity:0.5;font-size:9px">÷100</span>':'')+'</td>'
+          +'<td style="padding:7px 6px;text-align:center"><span style="font-family:var(--font-m);font-size:11px;color:var(--text3)">'+prevT+'</span></td>'
+          +'<td style="padding:7px 6px">'
+            +'<input type="number" id="inp_o_'+upt+'_'+sk.replace(/\s/g,'_')+'" '
+            +'value="'+prevO+'" min="0" '
+            +'style="width:70px;background:rgba(255,255,255,0.05);border:1px solid var(--line);border-radius:5px;'
+            +'color:var(--text);font-family:var(--font-m);font-size:12px;padding:4px 8px;text-align:center;outline:none" '
+            +'onchange="markChanged(this)" '
+            +'onfocus="this.style.borderColor=\'var(--accent)\'" '
+            +'onblur="this.style.borderColor=\'var(--line)\'">'
+          +'</td>'
+          +'<td style="padding:7px 6px">'
+            +'<input type="number" id="inp_j_'+upt+'_'+sk.replace(/\s/g,'_')+'" '
+            +'value="0" min="0" '
+            +'style="width:70px;background:rgba(255,165,2,0.05);border:1px solid rgba(255,165,2,0.2);border-radius:5px;'
+            +'color:#ffa502;font-family:var(--font-m);font-size:12px;padding:4px 8px;text-align:center;outline:none" '
+            +'onfocus="this.style.borderColor=\'#ffa502\'" '
+            +'onblur="this.style.borderColor=\'rgba(255,165,2,0.2)\'">'
+          +'</td>'
+        +'</tr>';
+      }).join('');
+
+      return '<div style="margin-bottom:16px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+        +'<span style="background:rgba('+hexToRgb(g.color)+',0.12);color:'+g.color+';font-family:var(--font-m);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px">'+g.grp+'</span>'
+        +'<span style="font-size:11px;color:var(--text2)">'+g.label+'</span>'
+        +'</div>'
+        +'<table style="width:100%;border-collapse:collapse;background:var(--bg2);border-radius:8px;overflow:hidden">'
+        +'<thead><tr style="border-bottom:1px solid var(--line)">'
+        +'<th style="padding:7px 10px;text-align:left;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">SUB-KATEGORI</th>'
+        +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">TARGET</th>'
+        +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">OPEN</th>'
+        +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:#ffa502;letter-spacing:0.08em;font-weight:500">TINJUT</th>'
+        +'</tr></thead>'
+        +'<tbody>'+rows+'</tbody>'
+        +'</table>'
+      +'</div>';
+    }).join('');
+  }
+
+  // UPT tabs
+  var uptTabs = UPTS.map(function(u){
+    var col = UPT_COLORS[u];
+    return '<button onclick="switchInputUpt(\''+u+'\')" '
+      +'style="padding:7px 16px;font-family:var(--font-m);font-size:11px;font-weight:700;border:none;cursor:pointer;border-radius:6px;transition:all 0.15s;'
+      +(u===activeInputUpt
+        ? 'background:'+col+';color:#000;box-shadow:0 0 12px '+col+'44;'
+        : 'background:rgba(255,255,255,0.05);color:var(--text3);')
+      +'">'+u+'</button>';
+  }).join('');
+
+  // Google Sheets Apps Script URL info
+  var appsScriptSection = '<div class="note-box" style="margin-bottom:20px">'
+    +'<strong>⚙ Konfigurasi Google Apps Script:</strong> '
+    +'Untuk input otomatis ke Google Sheets, isi URL Apps Script di bawah ini.<br>'
+    +'<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'
+    +'<input id="apps-script-url" type="text" placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec" '
+    +'value="'+(window.APPS_SCRIPT_URL||'')+'" '
+    +'style="flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--line);border-radius:6px;'
+    +'color:var(--text);font-family:var(--font-m);font-size:11px;padding:6px 10px;outline:none">'
+    +'<button onclick="saveAppsScriptUrl()" '
+    +'style="padding:6px 14px;background:rgba(88,166,255,0.15);border:1px solid rgba(88,166,255,0.3);'
+    +'border-radius:6px;color:#58a6ff;font-family:var(--font-m);font-size:11px;cursor:pointer">Simpan</button>'
+    +'</div>'
+    +'</div>';
+
+  var formHtml = '<div id="input-form-'+activeInputUpt+'">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">'
+    +'<span style="font-family:var(--font-m);font-size:11px;color:var(--text3)">Tanggal:</span>'
+    +'<span style="font-family:var(--font-m);font-size:13px;font-weight:700;color:var(--accent);'
+    +'background:rgba(88,166,255,0.08);border:1px solid rgba(88,166,255,0.2);border-radius:6px;padding:4px 12px">'+todayStr+'</span>'
+    +'<span style="font-size:10px;font-family:var(--font-m);color:var(--text3);margin-left:4px">⚠ Tidak dapat diedit</span>'
+    +'</div>'
+    +buildRows(activeInputUpt)
+    +'<div style="display:flex;gap:10px;margin-top:20px;padding-top:20px;border-top:1px solid var(--line)">'
+    +'<button onclick="submitInputData(\''+activeInputUpt+'\',\''+todayStr+'\')" '
+    +'style="flex:1;padding:12px;background:linear-gradient(135deg,#1f6feb,#58a6ff);border:none;border-radius:8px;'
+    +'color:#fff;font-family:var(--font-m);font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.05em;'
+    +'box-shadow:0 4px 16px rgba(88,166,255,0.3)">'
+    +'📤 SUBMIT KE GOOGLE SHEETS</button>'
+    +'<button onclick="resetInputForm(\''+activeInputUpt+'\')" '
+    +'style="padding:12px 20px;background:rgba(255,255,255,0.05);border:1px solid var(--line);border-radius:8px;'
+    +'color:var(--text3);font-family:var(--font-m);font-size:12px;cursor:pointer">'
+    +'Reset</button>'
+    +'</div>'
+    +'<div id="submit-status-'+activeInputUpt+'" style="margin-top:12px;font-family:var(--font-m);font-size:11px;text-align:center"></div>'
+    +'</div>';
+
+  document.getElementById('view-input').innerHTML =
+    '<div class="sec-head"><span class="sec-title">Input Data Harian</span><span class="sec-rule"></span>'
+    +'<span class="sec-meta">'+todayStr+'</span></div>'
+    + appsScriptSection
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">'+uptTabs+'</div>'
+    +'<div class="chart-card">'+formHtml+'</div>';
+}
+
+function hexToRgb(hex){
+  var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return r+','+g+','+b;
+}
+
+function markChanged(el){
+  el.style.borderColor='#ffa502';
+  el.style.background='rgba(255,165,2,0.08)';
+}
+
+function switchInputUpt(upt){
+  window._activeInputUpt = upt;
+  renderInputForm();
+}
+
+function saveAppsScriptUrl(){
+  var url = document.getElementById('apps-script-url').value.trim();
+  window.APPS_SCRIPT_URL = url;
+  localStorage.setItem('apps_script_url', url);
+  var btn = document.querySelector('#apps-script-url + button');
+  if(btn){ btn.textContent='✓ Tersimpan'; btn.style.color='#3fb950'; setTimeout(function(){btn.textContent='Simpan';btn.style.color='#58a6ff';},2000); }
+}
+
+function resetInputForm(upt){
+  var n = WL.length-1;
+  var SUBS = ['G1 AHI Trafo','G1 Anti Binatang','G1 Relay Internal','G2 MV Aparatus','G3 Switchyard AHI','G4 GIS','G5 Common Facility',
+    'T1 Cable Sheath','T2 SUTT AHI','T2 ROW B1','T2 Anti Binatang','T2 Tapak Tower',
+    'P1 AHI Proteksi','P1 Design Proteksi','P2 AHI Catu Daya','P2 Design Catu Daya'];
+  SUBS.forEach(function(sk){
+    var grpKey = GROUP_OF[sk];
+    var arr = D[upt][grpKey][sk];
+    var prevO = arr && arr.length>0 ? arr[n].o : 0;
+    var oEl = document.getElementById('inp_o_'+upt+'_'+sk.replace(/\s/g,'_'));
+    var jEl = document.getElementById('inp_j_'+upt+'_'+sk.replace(/\s/g,'_'));
+    if(oEl){ oEl.value=prevO; oEl.style.borderColor='var(--line)'; oEl.style.background='rgba(255,255,255,0.05)'; }
+    if(jEl){ jEl.value=0; }
+  });
+}
+
+async function submitInputData(upt, tanggal){
+  var statusEl = document.getElementById('submit-status-'+upt);
+  var scriptUrl = window.APPS_SCRIPT_URL || localStorage.getItem('apps_script_url') || '';
+  if(!scriptUrl){
+    statusEl.innerHTML='<span style="color:#f85149">⚠ URL Apps Script belum diisi. Isi terlebih dahulu di atas.</span>';
+    return;
+  }
+
+  // Collect data
+  var SUBS = ['G1 AHI Trafo','G1 Anti Binatang','G1 Relay Internal','G2 MV Aparatus','G3 Switchyard AHI','G4 GIS','G5 Common Facility',
+    'T1 Cable Sheath','T2 SUTT AHI','T2 ROW B1','T2 Anti Binatang','T2 Tapak Tower',
+    'P1 AHI Proteksi','P1 Design Proteksi','P2 AHI Catu Daya','P2 Design Catu Daya'];
+  var n = WL.length-1;
+  var row = [tanggal];
+  SUBS.forEach(function(sk){
+    var grpKey = GROUP_OF[sk];
+    var arr = D[upt][grpKey][sk];
+    var prevT = arr && arr.length>0 ? arr[n].t : 0;
+    var oEl = document.getElementById('inp_o_'+upt+'_'+sk.replace(/\s/g,'_'));
+    var jEl = document.getElementById('inp_j_'+upt+'_'+sk.replace(/\s/g,'_'));
+    var o = oEl ? parseInt(oEl.value)||0 : 0;
+    var j = jEl ? parseInt(jEl.value)||0 : 0;
+    row.push(prevT, o, j);
+  });
+
+  var payload = { upt: upt, tanggal: tanggal, row: row };
+  statusEl.innerHTML='<span style="color:#d29922">⏳ Mengirim data ke Google Sheets...</span>';
+
+  try{
+    var resp = await fetch(scriptUrl, {
+      method:'POST',
+      body: JSON.stringify(payload)
+    });
+    var result = await resp.json();
+    if(result.status==='ok'){
+      statusEl.innerHTML='<span style="color:#3fb950">✓ Data berhasil dikirim! Refresh dashboard dalam 1 menit untuk melihat perubahan.</span>';
+    } else {
+      statusEl.innerHTML='<span style="color:#f85149">⚠ Error: '+(result.message||'Unknown error')+'</span>';
+    }
+  }catch(e){
+    statusEl.innerHTML='<span style="color:#f85149">⚠ Gagal terhubung ke Apps Script: '+e.message+'</span>';
+  }
+}
+
 function renderAll(){
   renderNavTabs();
   if(activeView==='rekap') renderRekap();
   else if(activeView==='upt') renderUptView();
   else if(activeView==='performance') renderPerformance();
+  else if(activeView==='input') renderInputForm();
 }
 
 document.getElementById('topdate').textContent=LAST_UPDATE;
