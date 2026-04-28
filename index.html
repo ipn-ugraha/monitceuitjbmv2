@@ -468,6 +468,7 @@ const SHEET_CONFIG = {
     BALI:        '1051401301',
     MADIUN:      '1862467405',
     PROBOLINGGO: '30044770',
+    TINJUT:      'ISI_GID_TAB_TINJUT',  // Ganti setelah buat tab TINJUT
   }
 };
 
@@ -477,6 +478,8 @@ const SUB_KEYS = [
   'T1 Cable Sheath','T2 SUTT AHI','T2 ROW B1','T2 Anti Binatang','T2 Tapak Tower',
   'P1 AHI Proteksi','P1 Design Proteksi','P2 AHI Catu Daya','P2 Design Catu Daya'
 ];
+// Setiap sub-key punya 3 kolom: T (target), O (open), J (tindak lanjut)
+// Total kolom per baris: 1 (tanggal) + 16×3 = 49
 
 const GROUP_OF = {
   'G1 AHI Trafo':'G','G1 Anti Binatang':'G','G1 Relay Internal':'G',
@@ -506,11 +509,11 @@ function parseCSV(text){
 
 function buildDBlock(rows){
   // rows[0] = header, rows[1..] = data rows
-  // Returns {wl:[], data:{G:{},T:{},P:{}}}
+  // Kolom: Tanggal | SK1_T | SK1_O | SK1_J | SK2_T | SK2_O | SK2_J | ...
   if(rows.length < 2) return null;
-  var header = rows[0];
   var wl = [];
   var data = {G:{},T:{},P:{}};
+  var tinjutHist = {}; // tinjut per tanggal: {date: {sk: val}}
   
   SUB_KEYS.forEach(function(sk){
     var grp = GROUP_OF[sk];
@@ -520,18 +523,23 @@ function buildDBlock(rows){
   for(var ri=1; ri<rows.length; ri++){
     var row = rows[ri];
     if(!row[0] || row[0].trim()==='') continue;
-    wl.push(row[0].trim());
+    var date = row[0].trim();
+    wl.push(date);
+    tinjutHist[date] = {};
     
     SUB_KEYS.forEach(function(sk, si){
       var grp = GROUP_OF[sk];
-      var tIdx = 1 + si*2;
-      var oIdx = 1 + si*2 + 1;
+      var tIdx = 1 + si*3;
+      var oIdx = 1 + si*3 + 1;
+      var jIdx = 1 + si*3 + 2;
       var t = parseInt(row[tIdx])||0;
       var o = parseInt(row[oIdx])||0;
-      data[grp][sk].push({t:t, o:o});
+      var j = parseInt(row[jIdx])||0;
+      data[grp][sk].push({t:t, o:o, j:j});
+      if(j>0) tinjutHist[date][sk] = j;
     });
   }
-  return {wl:wl, data:data};
+  return {wl:wl, data:data, tinjutHist:tinjutHist};
 }
 
 async function fetchCSV(gid){
@@ -592,6 +600,7 @@ async function initDashboard(){
     // Parse all
     var allOk = true;
     var wlRef = null;
+    var parsedData = {};
     
     uptKeys.forEach(function(upt, ui){
       var text = results[ui];
@@ -601,13 +610,40 @@ async function initDashboard(){
       if(!parsed){ allOk=false; return; }
       if(!wlRef) wlRef = parsed.wl;
       D[upt] = parsed.data;
+      parsedData[upt] = parsed;
     });
     
     if(!allOk){
       showError('Gagal mengambil sebagian data UPT. Pastikan semua tab sudah dipublish di Google Sheets.');
       return;
     }
-    
+
+    // Fetch TINJUT detail (optional - skip if GID not set)
+    showLoading('Mengambil data tindak lanjut...');
+    if(SHEET_CONFIG.GIDS.TINJUT && SHEET_CONFIG.GIDS.TINJUT !== 'ISI_GID_TAB_TINJUT'){
+      var tinjutText = await fetchCSV(SHEET_CONFIG.GIDS.TINJUT);
+      if(tinjutText){
+        var tinjutRows = parseCSV(tinjutText).slice(1); // skip header
+        TINJUT_DETAIL = {};
+        tinjutRows.forEach(function(r){
+          if(!r[0]||!r[1]||!r[2]) return;
+          var tgl=r[0].trim(), upt=r[1].trim().toUpperCase(),
+              kat=r[2].trim(), jml=parseInt(r[3])||0, ket=r[4]||'';
+          if(!TINJUT_DETAIL[tgl]) TINJUT_DETAIL[tgl]={};
+          if(!TINJUT_DETAIL[tgl][upt]) TINJUT_DETAIL[tgl][upt]=[];
+          TINJUT_DETAIL[tgl][upt].push({kat:kat, jml:jml, ket:ket});
+        });
+        // Update TINJUT_TODAY from latest date
+        var lastDate = wlRef[wlRef.length-1];
+        if(TINJUT_DETAIL[lastDate]){
+          Object.keys(TINJUT_DETAIL[lastDate]).forEach(function(upt){
+            var total = TINJUT_DETAIL[lastDate][upt].reduce(function(s,x){return s+x.jml;},0);
+            TINJUT_TODAY[upt] = total;
+          });
+        }
+      }
+    }
+
     // Update global variables
     WL.length = 0;
     wlRef.forEach(function(d){ WL.push(d); });
@@ -643,6 +679,7 @@ const GROUP_META = {
   P:{label:"P – Proteksi & Catu Daya",badge_bg:"rgba(0,136,74,0.1)",badge_txt:"#00884a",bar:"#3fb950"},
 };
 var TINJUT_TODAY = {"MALANG":0,"SURABAYA":0,"GRESIK":0,"BALI":0,"MADIUN":0,"PROBOLINGGO":0};
+var TINJUT_DETAIL = {}; // {tanggal: {UPT: [{kat, jml, ket}]}}
 var D = {
   MALANG:{G:{},T:{},P:{}},SURABAYA:{G:{},T:{},P:{}},
   GRESIK:{G:{},T:{},P:{}},BALI:{G:{},T:{},P:{}},
@@ -1012,9 +1049,16 @@ function renderUptCharts(){
     });
 
     const tjTotal = TINJUT_TODAY[activeUpt] || 0;
-    const tjSectionBadge = (tjTotal > 0 && grp === 'T') 
-      ? `<span style="margin-left:auto;font-family:var(--font-m);font-size:10px;font-weight:600;color:#ffa502;background:rgba(255,165,2,0.1);border:1px solid rgba(255,165,2,0.3);padding:2px 8px;border-radius:4px">▶ Tindak Lanjut Hari Ini: ${tjTotal.toLocaleString()}</span>`
+    const lastDate = WL[WL.length-1]||'';
+    const tjDetail = (TINJUT_DETAIL[lastDate]||{})[activeUpt]||[];
+    const tjDetailHtml = tjDetail.length>0
+      ? tjDetail.map(function(x){
+          return '<span style="font-family:var(--font-m);font-size:9px;color:#ffa502;margin-left:8px">'+x.kat+': <b>'+x.jml+'</b>'+(x.ket?' ('+x.ket+')':'')+'</span>';
+        }).join('')
       : '';
+    const tjSectionBadge = (tjTotal > 0 && grp === 'T') 
+      ? '<span style="margin-left:auto;font-family:var(--font-m);font-size:10px;font-weight:600;color:#ffa502;background:rgba(255,165,2,0.1);border:1px solid rgba(255,165,2,0.3);padding:2px 8px;border-radius:4px">▶ Tindak Lanjut: '+tjTotal.toLocaleString()+tjDetailHtml+'</span>'
+      : (tjTotal > 0 ? '<span style="margin-left:auto;font-family:var(--font-m);font-size:10px;color:#ffa502">▶ Tindak Lanjut: '+tjTotal.toLocaleString()+tjDetailHtml+'</span>' : '');
     sectionsHtml+=`<div class="charts-section">
       <div class="charts-section-head">
         <span class="charts-grp-badge" style="background:${gm.badge_bg};color:${gm.badge_txt}">${grp}</span>
@@ -1231,7 +1275,48 @@ function renderPerformance(){
     + '<div class="sec-head" style="margin-top:28px"><span class="sec-title">Prediksi Penyelesaian Akhir Tahun</span><span class="sec-rule"></span><span class="sec-meta">asumsi kecepatan konstan · normalisasi ROW B1 ÷ 100</span></div>'
     + buildPrediction(normData);
 
-  document.getElementById('view-performance').innerHTML = html;
+  // Append TINJUT history section
+  var lastDate = WL[WL.length-1]||'';
+  var tinjutHtml = buildTinjutHistory();
+  document.getElementById('view-performance').innerHTML = html + tinjutHtml;
+}
+
+function buildTinjutHistory(){
+  if(!TINJUT_DETAIL || Object.keys(TINJUT_DETAIL).length===0){
+    return '<div class="sec-head" style="margin-top:28px"><span class="sec-title">Riwayat Tindak Lanjut</span><span class="sec-rule"></span><span class="sec-meta">data dari tab TINJUT</span></div>'
+      +'<div class="note-box">Tab TINJUT belum dikonfigurasi atau belum ada data.</div>';
+  }
+  // Sort dates descending
+  var dates = Object.keys(TINJUT_DETAIL).sort(function(a,b){
+    var ai=WL.indexOf(a), bi=WL.indexOf(b);
+    return bi-ai;
+  });
+  var rows = '';
+  dates.forEach(function(tgl){
+    var uptMap = TINJUT_DETAIL[tgl];
+    Object.keys(uptMap).forEach(function(upt){
+      var col = UPT_COLORS[upt]||'#58a6ff';
+      uptMap[upt].forEach(function(x){
+        rows += '<tr style="border-bottom:1px solid rgba(0,212,255,0.06)">'
+          +'<td style="padding:8px 12px;font-family:var(--font-m);font-size:11px;color:var(--text3)">'+tgl+'</td>'
+          +'<td style="padding:8px 12px;font-family:var(--font-m);font-size:11px;font-weight:700;color:'+col+'">'+upt+'</td>'
+          +'<td style="padding:8px 12px;font-family:var(--font-m);font-size:11px;color:var(--text2)">'+x.kat+'</td>'
+          +'<td style="padding:8px 12px;font-family:var(--font-m);font-size:12px;font-weight:600;color:#ffa502;text-align:right">'+x.jml.toLocaleString()+'</td>'
+          +'<td style="padding:8px 12px;font-family:var(--font-m);font-size:10px;color:var(--text3)">'+x.ket+'</td>'
+          +'</tr>';
+      });
+    });
+  });
+  var thead = '<thead><tr style="border-bottom:1px solid rgba(0,212,255,0.15)">'
+    +'<th style="padding:8px 12px;text-align:left;font-family:var(--font-m);font-size:10px;color:var(--text3);font-weight:500;letter-spacing:0.08em">TANGGAL</th>'
+    +'<th style="padding:8px 12px;text-align:left;font-family:var(--font-m);font-size:10px;color:var(--text3);font-weight:500;letter-spacing:0.08em">UPT</th>'
+    +'<th style="padding:8px 12px;text-align:left;font-family:var(--font-m);font-size:10px;color:var(--text3);font-weight:500;letter-spacing:0.08em">KATEGORI</th>'
+    +'<th style="padding:8px 12px;text-align:right;font-family:var(--font-m);font-size:10px;color:var(--text3);font-weight:500;letter-spacing:0.08em">JUMLAH</th>'
+    +'<th style="padding:8px 12px;text-align:left;font-family:var(--font-m);font-size:10px;color:var(--text3);font-weight:500;letter-spacing:0.08em">KETERANGAN</th>'
+    +'</tr></thead>';
+  return '<div class="sec-head" style="margin-top:28px"><span class="sec-title">Riwayat Tindak Lanjut</span><span class="sec-rule"></span><span class="sec-meta">'+Object.values(TINJUT_DETAIL).reduce(function(s,v){return s+Object.values(v).reduce(function(s2,a){return s2+a.length;},0);},0)+' entri</span></div>'
+    +'<div class="chart-card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+    +thead+'<tbody>'+rows+'</tbody></table></div>';
 }
 
 function renderAll(){
