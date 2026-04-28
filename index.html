@@ -469,7 +469,7 @@ const SHEET_CONFIG = {
     BALI:        '1051401301',
     MADIUN:      '1862467405',
     PROBOLINGGO: '30044770',
-    TINJUT:      'ISI_GID_TAB_TINJUT',  // Ganti setelah buat tab TINJUT
+    BA:          '1594720276',        // Isi GID tab BA setelah import ke Google Sheets
   }
 };
 
@@ -658,6 +658,31 @@ async function initDashboard(){
     });
     
     window.APPS_SCRIPT_URL = localStorage.getItem('apps_script_url')||'https://script.google.com/macros/s/AKfycbzkrVWWidtmFwTQj3f7WyVUSvLyX0xocRUlZP19xoh8mO20ZXfPWpSWtGJcIUDw-thS7Q/exec';
+    // Fetch BA sheet (optional - tidak fatal jika gagal)
+    showLoading('Mengambil data Berita Acara...');
+    try{
+      if(SHEET_CONFIG.GIDS.BA && SHEET_CONFIG.GIDS.BA !== '1594720276'){
+        var baText = await fetchCSV(SHEET_CONFIG.GIDS.BA);
+        if(baText){
+          var baRows = parseCSV(baText);
+          // baRows[0] = header (UPT, SK1, SK2, ...)
+          // baRows[1..] = data per UPT
+          var baHeader = baRows[0];
+          baRows.slice(1).forEach(function(row){
+            var upt = (row[0]||'').trim().toUpperCase();
+            if(!upt) return;
+            BA_DATA[upt] = {};
+            baHeader.slice(1).forEach(function(sk, si){
+              BA_DATA[upt][sk.trim()] = parseInt(row[si+1])||0;
+            });
+          });
+          console.log('BA data loaded:', Object.keys(BA_DATA));
+        }
+      }
+    }catch(baErr){
+      console.warn('BA fetch failed (non-fatal):', baErr);
+    }
+
     hideLoading();
     renderAll();
     
@@ -687,6 +712,9 @@ var D = {
   GRESIK:{G:{},T:{},P:{}},BALI:{G:{},T:{},P:{}},
   MADIUN:{G:{},T:{},P:{}},PROBOLINGGO:{G:{},T:{},P:{}}
 };
+
+// BA_DATA: {UPT: {sk: jumlah_ba}}
+var BA_DATA = {};
 
 let activeView = 'rekap';
 let activeUpt = 'MALANG';
@@ -1372,6 +1400,11 @@ function renderInputForm(){
             +'onfocus="this.style.borderColor=\'#ffa502\'" '
             +'onblur="this.style.borderColor=\'rgba(255,165,2,0.2)\'">'
           +'</td>'
+          +'<td style="padding:7px 6px;text-align:center">'
+            +'<span style="font-family:var(--font-m);font-size:12px;font-weight:600;color:#a371f7">'
+            +(BA_DATA[upt]&&BA_DATA[upt][sk]!==undefined ? BA_DATA[upt][sk] : '—')
+            +'</span>'
+          +'</td>'
         +'</tr>';
       }).join('');
 
@@ -1386,6 +1419,7 @@ function renderInputForm(){
         +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">TARGET</th>'
         +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">OPEN</th>'
         +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:#ffa502;letter-spacing:0.08em;font-weight:500">TINJUT</th>'
+        +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:#a371f7;letter-spacing:0.08em;font-weight:500">BA</th>'
         +'</tr></thead>'
         +'<tbody>'+rows+'</tbody>'
         +'</table>'
