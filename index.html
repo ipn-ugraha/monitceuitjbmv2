@@ -1383,6 +1383,11 @@ function renderInputForm(){
         return '<tr>'
           +'<td style="padding:7px 10px;font-family:var(--font-m);font-size:11px;color:var(--text2);white-space:nowrap">'+sk+(isROW?' <span style="opacity:0.5;font-size:9px">÷100</span>':'')+'</td>'
           +'<td style="padding:7px 6px;text-align:center"><span style="font-family:var(--font-m);font-size:11px;color:var(--text3)">'+prevT+'</span></td>'
+          +'<td style="padding:7px 6px;text-align:center">'
+            +'<span style="font-family:var(--font-m);font-size:12px;font-weight:600;color:#a371f7">'
+            +(BA_DATA[upt]&&BA_DATA[upt][sk]!==undefined ? BA_DATA[upt][sk] : '—')
+            +'</span>'
+          +'</td>'
           +'<td style="padding:7px 6px">'
             +'<input type="number" id="inp_o_'+upt+'_'+sk.replace(/\s/g,'_')+'" '
             +'value="'+prevO+'" min="0" '
@@ -1400,11 +1405,6 @@ function renderInputForm(){
             +'onfocus="this.style.borderColor=\'#ffa502\'" '
             +'onblur="this.style.borderColor=\'rgba(255,165,2,0.2)\'">'
           +'</td>'
-          +'<td style="padding:7px 6px;text-align:center">'
-            +'<span style="font-family:var(--font-m);font-size:12px;font-weight:600;color:#a371f7">'
-            +(BA_DATA[upt]&&BA_DATA[upt][sk]!==undefined ? BA_DATA[upt][sk] : '—')
-            +'</span>'
-          +'</td>'
         +'</tr>';
       }).join('');
 
@@ -1417,9 +1417,9 @@ function renderInputForm(){
         +'<thead><tr style="border-bottom:1px solid var(--line)">'
         +'<th style="padding:7px 10px;text-align:left;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">SUB-KATEGORI</th>'
         +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">TARGET</th>'
+        +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:#a371f7;letter-spacing:0.08em;font-weight:500">CLOSE (BA)</th>'
         +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:var(--text3);letter-spacing:0.08em;font-weight:500">OPEN</th>'
         +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:#ffa502;letter-spacing:0.08em;font-weight:500">TINJUT</th>'
-        +'<th style="padding:7px 6px;text-align:center;font-family:var(--font-m);font-size:9px;color:#a371f7;letter-spacing:0.08em;font-weight:500">BA</th>'
         +'</tr></thead>'
         +'<tbody>'+rows+'</tbody>'
         +'</table>'
