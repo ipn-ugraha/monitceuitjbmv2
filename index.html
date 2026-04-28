@@ -661,7 +661,7 @@ async function initDashboard(){
     // Fetch BA sheet (optional - tidak fatal jika gagal)
     showLoading('Mengambil data Berita Acara...');
     try{
-      if(SHEET_CONFIG.GIDS.BA && SHEET_CONFIG.GIDS.BA !== '1594720276'){
+      if(SHEET_CONFIG.GIDS.BA && SHEET_CONFIG.GIDS.BA !== 'GANTI_GID_BA'){
         var baText = await fetchCSV(SHEET_CONFIG.GIDS.BA);
         if(baText){
           var baRows = parseCSV(baText);
