@@ -657,7 +657,7 @@ async function initDashboard(){
       TINJUT_TODAY[upt] = parseInt(configMap[key])||0;
     });
     
-    window.APPS_SCRIPT_URL = localStorage.getItem('apps_script_url')||'';
+    window.APPS_SCRIPT_URL = localStorage.getItem('apps_script_url')||'https://script.google.com/macros/s/AKfycbzkrVWWidtmFwTQj3f7WyVUSvLyX0xocRUlZP19xoh8mO20ZXfPWpSWtGJcIUDw-thS7Q/exec';
     hideLoading();
     renderAll();
     
@@ -1432,9 +1432,16 @@ function renderInputForm(){
     +'style="flex:1;padding:12px;background:linear-gradient(135deg,#1f6feb,#58a6ff);border:none;border-radius:8px;'
     +'color:#fff;font-family:var(--font-m);font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.05em;'
     +'box-shadow:0 4px 16px rgba(88,166,255,0.3)">'
-    +'📤 SUBMIT KE GOOGLE SHEETS</button>'
+    +'📤 KIRIM DATA</button>'
     +'<button onclick="resetInputForm(\''+activeInputUpt+'\')" '
     +'style="padding:12px 20px;background:rgba(255,255,255,0.05);border:1px solid var(--line);border-radius:8px;'
+    +'color:var(--text3);font-family:var(--font-m);font-size:12px;cursor:pointer">'
+    +'<button onclick="showWAText(\''+activeInputUpt+'\'\,\''+todayStr+'\')" '
+    +'style="padding:12px 16px;background:rgba(63,185,80,0.15);border:1px solid rgba(63,185,80,0.3);border-radius:8px;'
+    +'color:#3fb950;font-family:var(--font-m);font-size:12px;font-weight:600;cursor:pointer">'
+    +'📝 Format Teks</button>'
+    +'<button onclick="resetInputForm(\''+activeInputUpt+'\')" '
+    +'style="padding:12px 16px;background:rgba(255,255,255,0.05);border:1px solid var(--line);border-radius:8px;'
     +'color:var(--text3);font-family:var(--font-m);font-size:12px;cursor:pointer">'
     +'Reset</button>'
     +'</div>'
@@ -1563,6 +1570,138 @@ async function submitInputData(upt, tanggal){
     });
   };
   document.head.appendChild(sc);
+}
+
+// ── Format Teks WA ───────────────────────────────────────────────────────
+var WA_SECTIONS = [
+  {header:'*G1 Anomali Trafo :*', items:[
+    {label:'AHI TRAFO (Critical)',       sk:'G1 AHI Trafo'},
+    {label:'Proteksi Anti Binatang',     sk:'G1 Anti Binatang'},
+    {label:'Proteksi Relay Internal',    sk:'G1 Relay Internal'},
+  ]},
+  {header:'*G2 Anomali MV Aparatus :*', items:[
+    {label:'AHI MV Aparatus',            sk:'G2 MV Aparatus'},
+    {label:'Partial Discharge',          sk:null, fixed:0},
+    {label:'Hotspot',                    sk:null, fixed:0},
+    {label:'Anti Binatang',              sk:null, fixed:0},
+  ]},
+  {header:'*G3 Anomali Switchyard*', items:[
+    {label:'Switchyard AHI (PMT, CT, LA)', sk:'G3 Switchyard AHI'},
+    {label:'Grounding Mesh',             sk:null, fixed:0},
+    {label:'Anti Binatang',              sk:null, fixed:0},
+    {label:'Anti Layang-Layang',         sk:null, fixed:0},
+    {label:'Hotspot Switchyard',         sk:null, fixed:0},
+  ]},
+  {header:'*G4 Anomali GIS :*', items:[
+    {label:'Kebocoran Gas SF6',          sk:'G4 GIS'},
+    {label:'Kualitas Gas SF6',           sk:null, fixed:0},
+    {label:'Partial Discharge',          sk:null, fixed:0},
+    {label:'Jumlah (Kali) Mekanik',      sk:null, fixed:0},
+    {label:'Sistem Hidrolis',            sk:null, fixed:0},
+    {label:'Grounding',                  sk:null, fixed:0},
+  ]},
+  {header:'*G5 Anomali Common Facility :*', items:[
+    {label:'Atap Gedung',                sk:'G5 Common Facility'},
+    {label:'Pagar GI',                   sk:null, fixed:0},
+    {label:'Air Conditioner',            sk:null, fixed:0},
+    {label:'Dak Kabel',                  sk:null, fixed:0},
+    {label:'Pondasi',                    sk:null, fixed:0},
+  ]},
+  {header:'*T1. Anomali SKTT / SKLT*', items:[
+    {label:'Kebocoran Minyak',           sk:null, fixed:0},
+    {label:'Cable Sheath',               sk:'T1 Cable Sheath'},
+    {label:'Joint Cable',                sk:null, fixed:0},
+    {label:'Penanda Jalur',              sk:null, fixed:0},
+    {label:'Buoy',                       sk:null, fixed:0},
+  ]},
+  {header:'*T2. Anomali SUTT/SUTET*', items:[
+    {label:'AHI',                        sk:'T2 SUTT AHI'},
+    {label:'ROW K',                      sk:null, fixed:0},
+    {label:'ROW B1*',                    sk:'T2 ROW B1'},
+    {label:'Anti Binatang',              sk:'T2 Anti Binatang'},
+    {label:'Tapak Tower',                sk:'T2 Tapak Tower'},
+  ]},
+  {header:'*P1. Anomali Proteksi*', items:[
+    {label:'AHI',                        sk:'P1 AHI Proteksi'},
+    {label:'Design',                     sk:'P1 Design Proteksi'},
+  ]},
+  {header:'*P2. Anomali Catu Daya*', items:[
+    {label:'AHI',                        sk:'P2 AHI Catu Daya'},
+    {label:'Design',                     sk:'P2 Design Catu Daya'},
+  ]},
+];
+
+var WA_LETTERS = ['a','b','c','d','e','f','g','h'];
+
+function generateWAText(upt, tanggal){
+  var n = WL.length-1;
+  var lines = [];
+  lines.push('*KONDISI COMMON ENEMY UPT '+upt+' '+tanggal+'*');
+  lines.push('target/open/tinjut:');
+
+  WA_SECTIONS.forEach(function(sec){
+    lines.push(sec.header);
+    sec.items.forEach(function(item, idx){
+      var letter = WA_LETTERS[idx] || String.fromCharCode(97+idx);
+      var t=0, o=0, j=0;
+      if(item.sk){
+        var grpKey = GROUP_OF[item.sk];
+        var arr = D[upt][grpKey] && D[upt][grpKey][item.sk];
+        if(arr && arr.length>0){
+          // Try to get from input form first
+          var oEl = document.getElementById('inp_o_'+upt+'_'+item.sk.replace(/\s/g,'_'));
+          var jEl = document.getElementById('inp_j_'+upt+'_'+item.sk.replace(/\s/g,'_'));
+          t = arr[n].t;
+          o = oEl ? (parseInt(oEl.value)||0) : arr[n].o;
+          j = jEl ? (parseInt(jEl.value)||0) : 0;
+        }
+      }
+      lines.push(letter+'. '+item.label+' : '+t+' / '+o+' / '+j);
+    });
+  });
+  return lines.join('\n');
+}
+
+function showWAText(upt, tanggal){
+  var text = generateWAText(upt, tanggal);
+  // Show modal
+  var modal = document.getElementById('wa-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'wa-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px';
+    var mH='<div style="background:#0d1117;border:1px solid rgba(88,166,255,0.2);border-radius:12px;width:100%;max-width:600px;max-height:80vh;display:flex;flex-direction:column">';
+    mH+='<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(88,166,255,0.1)">';
+    mH+='<span style="font-family:var(--font-m);font-size:12px;font-weight:700;color:var(--accent)">Format Teks Laporan</span>';
+    mH+='<button onclick="closeWAModal()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1">×</button>';
+    mH+='</div>';
+    mH+='<div style="padding:16px 20px;overflow-y:auto;flex:1">';
+    mH+='<textarea id="wa-text-area" readonly style="width:100%;height:400px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:8px;color:var(--text);font-family:var(--font-m);font-size:11px;padding:12px;resize:none;line-height:1.6;box-sizing:border-box"></textarea>';
+    mH+='</div>';
+    mH+='<div style="padding:12px 20px;border-top:1px solid rgba(88,166,255,0.1);display:flex;gap:8px">';
+    mH+='<button id="wa-copy-btn" onclick="copyWAText()" style="flex:1;padding:10px;background:linear-gradient(135deg,#1f6feb,#58a6ff);border:none;border-radius:8px;color:#fff;font-family:var(--font-m);font-size:12px;font-weight:700;cursor:pointer">📋 Copy Teks</button>';
+    mH+='<button onclick="closeWAModal()" style="padding:10px 20px;background:rgba(255,255,255,0.05);border:1px solid var(--line);border-radius:8px;color:var(--text3);font-family:var(--font-m);font-size:12px;cursor:pointer">Tutup</button>';
+    mH+='</div></div>';
+    modal.innerHTML = mH;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('wa-text-area').value = text;
+  modal.style.display = 'flex';
+}
+
+function closeWAModal(){
+  var m=document.getElementById('wa-modal');
+  if(m) m.style.display='none';
+}
+
+function copyWAText(){
+  var ta = document.getElementById('wa-text-area');
+  ta.select();
+  document.execCommand('copy');
+  var btn = document.getElementById('wa-copy-btn');
+  btn.textContent = '✓ Tersalin!';
+  btn.style.background = 'linear-gradient(135deg,#1a6b3a,#3fb950)';
+  setTimeout(function(){ btn.textContent='📋 Copy Teks'; btn.style.background='linear-gradient(135deg,#1f6feb,#58a6ff)'; },2000);
 }
 
 function renderAll(){
