@@ -1492,7 +1492,7 @@ async function submitInputData(upt, tanggal){
   var statusEl = document.getElementById('submit-status-'+upt);
   var scriptUrl = window.APPS_SCRIPT_URL || localStorage.getItem('apps_script_url') || '';
   if(!scriptUrl){
-    statusEl.innerHTML='<span style="color:#f85149">⚠ URL Apps Script belum diisi. Isi terlebih dahulu di atas.</span>';
+    statusEl.innerHTML='<span style="color:#f85149">⚠ URL Apps Script belum diisi.</span>';
     return;
   }
 
@@ -1513,23 +1513,56 @@ async function submitInputData(upt, tanggal){
     row.push(prevT, o, j);
   });
 
-  var payload = { upt: upt, tanggal: tanggal, row: row };
   statusEl.innerHTML='<span style="color:#d29922">⏳ Mengirim data ke Google Sheets...</span>';
 
-  try{
-    var resp = await fetch(scriptUrl, {
-      method:'POST',
-      body: JSON.stringify(payload)
-    });
-    var result = await resp.json();
-    if(result.status==='ok'){
-      statusEl.innerHTML='<span style="color:#3fb950">✓ Data berhasil dikirim! Refresh dashboard dalam 1 menit untuk melihat perubahan.</span>';
+  // Gunakan JSONP approach untuk bypass CORS
+  // Kirim data via URL parameter, Apps Script baca dari doGet
+  var rowEncoded = encodeURIComponent(JSON.stringify(row));
+  var url = scriptUrl + '?upt='+encodeURIComponent(upt)
+    +'&tanggal='+encodeURIComponent(tanggal)
+    +'&row='+rowEncoded
+    +'&callback=_gsCallback';
+
+  window._gsCallback = function(result){
+    // cleanup
+    var s = document.getElementById('_gs_script');
+    if(s) s.remove();
+    delete window._gsCallback;
+    if(result && result.status==='ok'){
+      statusEl.innerHTML='<span style="color:#3fb950">✓ Data berhasil dikirim ke Google Sheets! Dashboard akan refresh dalam 1 jam.</span>';
     } else {
-      statusEl.innerHTML='<span style="color:#f85149">⚠ Error: '+(result.message||'Unknown error')+'</span>';
+      statusEl.innerHTML='<span style="color:#f85149">⚠ Error: '+(result&&result.message||'Unknown error')+'</span>';
     }
-  }catch(e){
-    statusEl.innerHTML='<span style="color:#f85149">⚠ Gagal terhubung ke Apps Script: '+e.message+'</span>';
-  }
+  };
+
+  // Timeout fallback
+  var timeout = setTimeout(function(){
+    if(window._gsCallback){
+      delete window._gsCallback;
+      var s = document.getElementById('_gs_script');
+      if(s) s.remove();
+      // no-cors fetch as last resort - we won't get response but data may still go through
+      statusEl.innerHTML='<span style="color:#d29922">⚠ Tidak ada respons dari Apps Script. Coba cek Google Sheets apakah data sudah masuk.</span>';
+    }
+  }, 10000);
+
+  // Inject script tag for JSONP
+  var sc = document.createElement('script');
+  sc.id = '_gs_script';
+  sc.src = url;
+  sc.onerror = function(){
+    clearTimeout(timeout);
+    delete window._gsCallback;
+    // Fallback: try no-cors fetch (fire and forget)
+    fetch(scriptUrl+'?upt='+encodeURIComponent(upt)+'&tanggal='+encodeURIComponent(tanggal)+'&row='+rowEncoded, {
+      method:'GET', mode:'no-cors'
+    }).then(function(){
+      statusEl.innerHTML='<span style="color:#d29922">⚠ Data dikirim (no-cors). Cek Google Sheets untuk konfirmasi.</span>';
+    }).catch(function(){
+      statusEl.innerHTML='<span style="color:#f85149">⚠ Gagal terhubung. Pastikan URL Apps Script benar dan sudah di-deploy sebagai Web App (Anyone).</span>';
+    });
+  };
+  document.head.appendChild(sc);
 }
 
 function renderAll(){
