@@ -1351,6 +1351,10 @@ function buildTinjutHistory(){
 }
 
 function renderInputForm(){
+  if(!WL || WL.length===0){
+    document.getElementById('view-input').innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);font-family:var(--font-m)">⏳ Menunggu data dari Google Sheets...</div>';
+    return;
+  }
   var n = WL.length-1;
   var today = new Date();
   var months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des'];
@@ -1377,7 +1381,7 @@ function renderInputForm(){
       var rows = g.subs.map(function(sk){
         var grpKey = GROUP_OF[sk];
         var arr = (D[upt]&&D[upt][grpKey]) ? D[upt][grpKey][sk] : null;
-        var lastPt = (arr && arr.length>0) ? arr[n] : null;
+        var lastPt = (arr && arr.length>0) ? arr[arr.length-1] : null;
         var prevO = lastPt ? lastPt.o : 0;
         var prevT = lastPt ? lastPt.t : 0;
         var isROW = sk==='T2 ROW B1';
@@ -1547,13 +1551,14 @@ async function submitInputData(upt, tanggal){
   var SUBS = ['G1 AHI Trafo','G1 Anti Binatang','G1 Relay Internal','G2 MV Aparatus','G3 Switchyard AHI','G4 GIS','G5 Common Facility',
     'T1 Cable Sheath','T2 SUTT AHI','T2 ROW B1','T2 Anti Binatang','T2 Tapak Tower',
     'P1 AHI Proteksi','P1 Design Proteksi','P2 AHI Catu Daya','P2 Design Catu Daya'];
-  var n = Math.max(0, WL.length-1);
+  var n = WL.length > 0 ? WL.length-1 : 0;
   var row = [tanggal];
   SUBS.forEach(function(sk){
     var grpKey = GROUP_OF[sk];
     var grpData = D[upt] && D[upt][grpKey];
     var arr = grpData && grpData[sk];
-    var prevT = (arr && arr.length>0 && arr[n]) ? arr[n].t : 0;
+    var lastEntry = (arr && arr.length>0) ? arr[arr.length-1] : null;
+    var prevT = lastEntry ? lastEntry.t : 0;
     var oEl = document.getElementById('inp_o_'+upt+'_'+sk.replace(/\s/g,'_'));
     var jEl = document.getElementById('inp_j_'+upt+'_'+sk.replace(/\s/g,'_'));
     var o = oEl ? (parseInt(oEl.value)||0) : 0;
@@ -1807,6 +1812,11 @@ function showRekapWAText(tanggal){
 
 function renderAll(){
   renderNavTabs();
+  // Guard: jangan render jika data belum loaded
+  var dataReady = WL && WL.length>0 && D && D.MALANG && D.MALANG.G && Object.keys(D.MALANG.G).length>0;
+  if(!dataReady){
+    if(activeView!=='input') return;
+  }
   if(activeView==='rekap') renderRekap();
   else if(activeView==='upt') renderUptView();
   else if(activeView==='performance') renderPerformance();
