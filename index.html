@@ -721,6 +721,18 @@ let activeUpt = 'MALANG';
 let _rekapCharts = [];
 let _uptCharts = [];
 
+// Safe array accessor - always returns last available point
+function safeGet(arr, idx){
+  if(!arr || arr.length===0) return {t:0,o:0,j:0};
+  var i = Math.min(idx, arr.length-1);
+  var pt = arr[i] || arr[arr.length-1] || {t:0,o:0,j:0};
+  return {t:pt.t||0, o:pt.o||0, j:pt.j||0};
+}
+function safeT(arr,i){return safeGet(arr,i).t;}
+function safeO(arr,i){return safeGet(arr,i).o;}
+function safeJ(arr,i){return safeGet(arr,i).j||0;}
+
+
 const darkBg = {id:'darkBg',beforeDraw:(chart)=>{const ctx=chart.canvas.getContext('2d');ctx.save();ctx.fillStyle='#161b22';ctx.fillRect(0,0,chart.width,chart.height);ctx.restore()}};
 
 
@@ -730,7 +742,7 @@ function adjVal(name,v){return ROW_KEYS.includes(name)?v/ROW_DIVISOR:v}
 
 function groupAggAdj(upt,grp,wi){
   let t=0,o=0;
-  Object.entries(D[upt][grp]).forEach(([name,arr])=>{t+=adjVal(name,arr[wi].t);o+=adjVal(name,arr[wi].o);});
+  Object.entries(D[upt][grp]).forEach(([name,arr])=>{t+=adjVal(name,safeT(arr,wi));o+=adjVal(name,safeO(arr,wi));});
   return{t,o};
 }
 
@@ -739,9 +751,9 @@ function calcProgress(upt){
   let totT=0,totO=0,rawT=0,rawO=0,rawRow=0,rawRowO=0,prevRawO=0;
   ['G','T','P'].forEach(g=>{
     Object.entries(D[upt][g]).forEach(([name,arr])=>{
-      totT+=adjVal(name,arr[n].t); totO+=adjVal(name,arr[n].o);
-      rawT+=arr[n].t; rawO+=arr[n].o; prevRawO+=arr[p].o;
-      if(ROW_KEYS.includes(name)){rawRow+=arr[n].t;rawRowO+=arr[n].o;}
+      totT+=adjVal(name,safeT(arr,n)); totO+=adjVal(name,safeO(arr,n));
+      rawT+=safeT(arr,n); rawO+=safeO(arr,n); prevRawO+=safeO(arr,p);
+      if(ROW_KEYS.includes(name)){rawRow+=safeT(arr,n);rawRowO+=safeO(arr,n);}
     });
   });
   return{pct:totT>0?Math.round((1-totO/totT)*100):100,adjT:Math.round(totT),adjO:Math.round(totO),rawT,rawO,rawRow,rawRowO,prevRawO,nonRowT:rawT-rawRow,nonRowO:rawO-rawRowO};
@@ -828,7 +840,7 @@ function renderRekap(){
     const allSubs=new Set();UPTS.forEach(u=>Object.keys(D[u][gKey]).forEach(k=>allSubs.add(k)));
     const rows=[...allSubs].map(name=>{
       let totT=0,totO=0,has=false;
-      UPTS.forEach(u=>{const a=D[u][gKey][name];if(a){totT+=a[n].t;totO+=a[n].o;if(a[n].t>0||a[n].o>0)has=true;}});
+      UPTS.forEach(u=>{const a=D[u][gKey][name];if(a){totT+=safeT(a,n);totO+=safeO(a,n);if(safeT(a,n)>0||safeO(a,n)>0)has=true;}});
       if(!has)return'';
       const p=pct(totO,totT),oc=oColor(totO,totT);
       return `<div class="cat-row"><div class="cat-top"><span class="cat-name">${name}</span><span class="cat-nums" style="color:${oc}">${totO.toLocaleString()}/${totT.toLocaleString()}</span><span class="cat-pct" style="color:${oc}">${p}%</span></div><div class="cat-bar-bg"><div class="cat-bar-f" style="width:${p}%;background:${gm.bar}"></div></div></div>`;
@@ -844,17 +856,17 @@ function renderRekap(){
     ['G','T','P'].forEach(gKey=>{
       const gm=GROUP_META[gKey];
       const allSubs=new Set();UPTS.forEach(u=>Object.keys(D[u][gKey]).forEach(k=>allSubs.add(k)));
-      const active=[...allSubs].filter(name=>UPTS.some(u=>{const a=D[u][gKey][name];return a&&(a[n].t>0||a[n].o>0);}));
+      const active=[...allSubs].filter(name=>UPTS.some(u=>{const a=D[u][gKey][name];return a&&(safeT(a,n)>0||safeO(a,n)>0);}));
       if(!active.length)return;
       const cid='rekap_chart_'+gKey;
       const barH=Math.max(active.length*50+80,160);
       const datasets=UPTS.map(upt=>({
         label:upt,
-        data:active.map(name=>{const a=D[upt][gKey][name];return a?a[n].o:0;}),
-        targets:active.map(name=>{const a=D[upt][gKey][name];return a?a[n].t:0;}),
+        data:active.map(name=>{const a=D[upt][gKey][name];return a?safeO(a,n):0;}),
+        targets:active.map(name=>{const a=D[upt][gKey][name];return a?safeT(a,n):0;}),
         color:UPT_COLORS[upt]
       }));
-      const totalPcts=active.map(name=>{let tT=0,tO=0;UPTS.forEach(u=>{const a=D[u][gKey][name];if(a){tT+=a[n].t;tO+=a[n].o;}});return pct(tO,tT);});
+      const totalPcts=active.map(name=>{let tT=0,tO=0;UPTS.forEach(u=>{const a=D[u][gKey][name];if(a){tT+=safeT(a,n);tO+=safeO(a,n);}});return pct(tO,tT);});
       chartDefs.push({cid,active,datasets,totalPcts,barH,gKey});
       const lg=UPTS.map(u=>`<span class="chart-legend-item"><span class="legend-sq" style="background:${UPT_COLORS[u]}"></span>${u}</span>`).join('');
       const mini=active.map((name,i)=>{const p=totalPcts[i];const oc=p===100?'#3fb950':p===0?'#f85149':'#d29922';return`<div><div class="mini-prog-name">${name}</div><div style="display:flex;align-items:center;gap:5px"><div style="flex:1;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden"><div style="height:100%;width:${p}%;background:${oc};border-radius:2px"></div></div><span style="font-family:var(--font-m);font-size:9px;color:${oc};min-width:28px;text-align:right">${p}%</span></div></div>`;}).join('');
@@ -930,7 +942,7 @@ function renderRekap(){
             let total = 0;
             UPTS.forEach(upt => {
               const arr = D[upt][grp][name] || [];
-              const v = wi < arr.length ? arr[wi].o : (arr.length ? arr[arr.length-1].o : 0);
+              const v = wi < arr.length ? safeO(arr,wi) : (arr.length ? arr[arr.length-1].o : 0);
               total += isROW ? v/ROW_DIVISOR : v;
             });
             return isROW ? Math.round(total) : total;
@@ -939,7 +951,7 @@ function renderRekap(){
             let total = 0;
             UPTS.forEach(upt => {
               const arr = D[upt][grp][name] || [];
-              const v = wi < arr.length ? arr[wi].t : (arr.length ? arr[arr.length-1].t : 0);
+              const v = wi < arr.length ? safeT(arr,wi) : (arr.length ? arr[arr.length-1].t : 0);
               total += isROW ? v/ROW_DIVISOR : v;
             });
             return isROW ? Math.round(total) : total;
@@ -1032,7 +1044,7 @@ function renderUptPanels(){
   document.getElementById('panels').innerHTML=['G','T','P'].map(gKey=>{
     const gm=GROUP_META[gKey];
     const rows=Object.entries(D[activeUpt][gKey]).map(([name,arr])=>{
-      const t=arr[n].t,o=arr[n].o;if(!t&&!o)return'';
+      const t=safeT(arr,n),o=safeO(arr,n);if(!t&&!o)return'';
       const p=pct(o,t),oc=oColor(o,t);
       const d=arr[Math.max(0,n-1)].o-o;
       const ds=d>0?`<span class="delta-tag" style="color:#3fb950">▼${d}</span>`:d<0?`<span class="delta-tag" style="color:#f85149">▲${Math.abs(d)}</span>`:'';
@@ -1059,10 +1071,10 @@ function renderUptCharts(){
       const col=CAT_COLORS[i%CAT_COLORS.length];
       const isROW=ROW_KEYS.includes(name);
       const cid=`upt_${grp}_${i}`;
-      const lastO=arr[n].o,lastT=arr[n].t;
+      const lastO=safeO(arr,n),lastT=safeT(arr,n);
       const p=pct(lastO,lastT),pc=p===100?'#3fb950':p===0?'#f85149':'#d29922';
-      const tData=WL.map((_,wi)=>{const v=arr[wi]?arr[wi].t:arr[n].t;return isROW?Math.round(v/ROW_DIVISOR):v;});
-      const oData=WL.map((_,wi)=>{const v=arr[wi]?arr[wi].o:arr[n].o;return isROW?Math.round(v/ROW_DIVISOR):v;});
+      const tData=WL.map((_,wi)=>{const v=arr[wi]?safeT(arr,wi):safeT(arr,n);return isROW?Math.round(v/ROW_DIVISOR):v;});
+      const oData=WL.map((_,wi)=>{const v=arr[wi]?safeO(arr,wi):safeO(arr,n);return isROW?Math.round(v/ROW_DIVISOR):v;});
       chartQueue.push({cid,name,tData,oData,col});
       const tj = TINJUT_TODAY[activeUpt] || 0;
       const tjBadge = (tj > 0 && isROW) ? `<span style="color:#ffa502;font-family:var(--font-m);font-size:9px;font-weight:600">▶ TL: ${tj.toLocaleString()}</span>` : '';
@@ -1074,7 +1086,7 @@ function renderUptCharts(){
         <div class="cat-chart-wrap"><canvas id="${cid}" style="display:block;width:100%;height:100%"></canvas></div>
         <div class="cat-chart-foot">
           <span>open: <span style="color:${col}">${isROW?lastO.toLocaleString()+' pohon':lastO.toLocaleString()}</span></span>
-          <span style="display:flex;align-items:center;gap:6px">${tjBadge}<span style="${tjBadge?'font-size:9px;color:var(--text3)':''}">target: ${arr[0].t.toLocaleString()}${isROW?' pohon':''}</span></span>
+          <span style="display:flex;align-items:center;gap:6px">${tjBadge}<span style="${tjBadge?'font-size:9px;color:var(--text3)':''}">target: ${safeT(arr,0).toLocaleString()}${isROW?' pohon':''}</span></span>
         </div>
       </div>`;
     });
@@ -1139,7 +1151,7 @@ function renderPerformance(){
         Object.entries(D[upt][g]).forEach(function(entry){
           var name = entry[0], arr = entry[1];
           if(wi < arr.length){
-            var o = arr[wi].o;
+            var o = safeO(arr,wi);
             total += (normalize && ROW_KEYS.includes(name)) ? o/ROW_DIVISOR : o;
           }
         });
@@ -1381,9 +1393,8 @@ function renderInputForm(){
       var rows = g.subs.map(function(sk){
         var grpKey = GROUP_OF[sk];
         var arr = (D[upt]&&D[upt][grpKey]) ? D[upt][grpKey][sk] : null;
-        var lastPt = (arr && arr.length>0) ? arr[arr.length-1] : null;
-        var prevO = lastPt ? lastPt.o : 0;
-        var prevT = lastPt ? lastPt.t : 0;
+        var prevO = safeO(arr, arr ? arr.length-1 : 0);
+        var prevT = safeT(arr, arr ? arr.length-1 : 0);
         var isROW = sk==='T2 ROW B1';
         return '<tr>'
           +'<td style="padding:7px 10px;font-family:var(--font-m);font-size:11px;color:var(--text2);white-space:nowrap">'+sk+(isROW?' <span style="opacity:0.5;font-size:9px">÷100</span>':'')+'</td>'
@@ -1531,7 +1542,7 @@ function resetInputForm(upt){
   SUBS.forEach(function(sk){
     var grpKey = GROUP_OF[sk];
     var arr = (D[upt]&&D[upt][grpKey]) ? D[upt][grpKey][sk] : null;
-    var prevO = (arr && arr.length>0 && arr[n]) ? arr[n].o : 0;
+    var prevO = (arr && arr.length>0 && arr[n]) ? safeO(arr,n) : 0;
     var oEl = document.getElementById('inp_o_'+upt+'_'+sk.replace(/\s/g,'_'));
     var jEl = document.getElementById('inp_j_'+upt+'_'+sk.replace(/\s/g,'_'));
     if(oEl){ oEl.value=prevO; oEl.style.borderColor='var(--line)'; oEl.style.background='rgba(255,255,255,0.05)'; }
@@ -1557,8 +1568,7 @@ async function submitInputData(upt, tanggal){
     var grpKey = GROUP_OF[sk];
     var grpData = D[upt] && D[upt][grpKey];
     var arr = grpData && grpData[sk];
-    var lastEntry = (arr && arr.length>0) ? arr[arr.length-1] : null;
-    var prevT = lastEntry ? lastEntry.t : 0;
+    var prevT = safeT(arr, arr ? arr.length-1 : 0);
     var oEl = document.getElementById('inp_o_'+upt+'_'+sk.replace(/\s/g,'_'));
     var jEl = document.getElementById('inp_j_'+upt+'_'+sk.replace(/\s/g,'_'));
     var o = oEl ? (parseInt(oEl.value)||0) : 0;
@@ -1697,8 +1707,8 @@ function generateWAText(upt, tanggal){
           // Try to get from input form first
           var oEl = document.getElementById('inp_o_'+upt+'_'+item.sk.replace(/\s/g,'_'));
           var jEl = document.getElementById('inp_j_'+upt+'_'+item.sk.replace(/\s/g,'_'));
-          t = arr[n].t;
-          o = oEl ? (parseInt(oEl.value)||0) : arr[n].o;
+          t = safeT(arr,n);
+          o = oEl ? (parseInt(oEl.value)||0) : safeO(arr,n);
           j = jEl ? (parseInt(jEl.value)||0) : 0;
         }
       }
@@ -1767,9 +1777,9 @@ function generateRekapWAText(tanggal){
           var grpKey = GROUP_OF[item.sk];
           var arr = D[upt][grpKey] && D[upt][grpKey][item.sk];
           if(arr && arr.length>0){
-            totT += arr[n].t;
-            totO += arr[n].o;
-            totJ += arr[n].j||0;
+            totT += safeT(arr,n);
+            totO += safeO(arr,n);
+            totJ += safeJ(arr,n)||0;
           }
         });
         // Also check input form if currently open
